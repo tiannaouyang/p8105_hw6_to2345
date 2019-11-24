@@ -1,0 +1,107 @@
+---
+title: "p8105_hw6_to2345"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(modelr)
+library(mgcv)
+set.seed(1)
+
+boot_sample = function(df){
+  sample_frac(df, replace = TRUE)
+}
+
+```
+
+Load the data:
+```{r}
+bwt = 
+  read_csv(file = './birthweight.csv') %>% 
+  mutate(
+    babysex = as_factor(babysex),
+    frace = as_factor(frace),
+    malform = as_factor(malform),
+    mrace = as_factor(mrace)
+  )
+
+table(is.na(bwt))
+
+```
+There is no missing values in this dataset.
+
+
+Proposed regression model 1:
+y = baby's birth weight
+x = gaweeks
+<Describe your modeling process and show a plot of model residuals against fitted values – use add_predictions and add_residuals in making this plot.>
+
+```{r}
+model1 = lm(bwt ~ gaweeks, data = bwt)
+summary(model1)
+
+# plot of model residuals against fitted values
+bwt %>% 
+  modelr::add_residuals(model1) %>% 
+  modelr::add_predictions(model1) %>% 
+  ggplot(
+    aes(x = pred,
+        y = resid)
+  ) +
+  geom_point() +
+  ggtitle("Residuals against fitted values <Model 1>") +
+  theme_minimal()
+
+
+
+```
+
+
+Compare your model to two others:
+
+One using length at birth and gestational age as predictors (main effects only) -- Model 2
+One using head circumference, length, sex, and all interactions (including the three-way interaction) between these -- Model 3
+
+```{r}
+model2 =
+  lm(bwt ~ blength + gaweeks, data = bwt)
+
+model3 =
+  lm(bwt ~ bhead * blength * babysex, data = bwt)
+
+# Cross validation between these 3 models
+
+cv_df = crossv_mc(bwt, 100)
+cv_df =
+  cv_df %>% 
+  mutate(
+    model1 = map(train, ~lm(bwt ~ gaweeks, data = bwt)),
+    model2 = map(train, ~lm(bwt ~ blength + gaweeks, data = bwt)),
+    model3 = map(train, ~lm(bwt ~ bhead * blength * babysex, data = bwt))
+  ) %>% 
+  mutate(
+    rmse_model1 = map2_dbl(model1, test, ~rmse(model = .x, data = .y)),
+    rmse_model2 = map2_dbl(model2, test, ~rmse(model = .x, data = .y)),
+    rmse_model3 = map2_dbl(model3, test, ~rmse(model = .x, data = .y))
+  )
+
+# Plotting the distribution of RMSE values for each candidate model
+cv_df %>% 
+  select(starts_with("rmse")) %>% 
+  pivot_longer(
+    everything(),
+    names_to = "model", 
+    values_to = "rmse",
+    names_prefix = "rmse_") %>% 
+  mutate(model = fct_inorder(model)) %>% 
+  ggplot(aes(x = model, y = rmse)) + geom_violin() +
+  theme_minimal()+
+  ggtitle("Distribution of RMSE values across three different models")
+
+```
+
+- It is clear that Model 3 (using head circumference, length, sex, and all interactions as variables) has the least RMSE values, compared to the other two models.
+
+
